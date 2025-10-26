@@ -8,6 +8,19 @@ format: typst
 ## **Part 0: libraries**
 
 ```{r}
+# ---- setup ----
+# install.packages("scales")
+# install.packages("leaflet")
+library(tidyverse)
+library(sf)
+library(tigris)     # for US states geometry
+library(leaflet)    # interactive maps
+library(scales)
+options(tigris_use_cache = TRUE)
+library(stringr)
+
+# helper: consistent state names
+us_states_df <- tibble(state_name = state.name, state_abbr = state.abb) 
 
 ```
 
@@ -18,6 +31,76 @@ Chosen Question:
 ## **Part 2: Data Preparation and Cleaning**
 
 ```{r}
+# rm(list=ls())
+# Read renewables (three CSVs)
+renew_files <- list(
+    "data/renew-use-2021.csv",
+    "data/renew-use-2022.csv",
+    "data/renew-use-2023.csv"
+)
+renew_raw <- renew_files |>
+    set_names() |>
+    map_dfr(read_csv,.id="source") |>
+    mutate(year = case_when(
+        str_detect(source,"2021") ~ 2021,
+        str_detect(source,"2022") ~ 2022,
+        str_detect(source,"2023") ~ 2023,
+        TRUE ~ NA_real_
+    )) |>
+        select(-source)
+
+# Read total energy use
+total_files <- c("data/total-use-2021.csv", "data/total-use-2022.csv", "data/total-use-2023.csv")
+total_raw <- total_files |>
+  set_names() |>
+  map_dfr(read_csv, .id = "source") |>
+  mutate(year = case_when(
+    str_detect(source, "2021") ~ 2021,
+    str_detect(source, "2022") ~ 2022,
+    str_detect(source, "2023") ~ 2023,
+    TRUE ~ NA_real_
+  )) |>
+  select(-source)
+
+
+
+# Read EV registrations (2023)
+ev_raw <- read_csv("data/ev-registrations-by-state-2023.csv") |>
+  mutate(year = 2023)
+
+
+
+
+```
+
+```{r}
+
+
+# Step 1: Read the file, skip the first 3 lines (junk header)
+price_raw <- read_csv(
+  "data/av-energy-price-2021-2023.csv",
+  skip = 3,
+  col_names = FALSE,
+  show_col_types = FALSE
+)
+
+# Split the single column into separate ones
+price_split <- price_raw |>
+    separate(
+        col = X1,
+        into = c("State","2021","2022","2023"),
+        sep = ",",
+        fill = "right",
+        extra = "merge"
+    )
+
+cleaned_price <- price_split |>
+mutate(across(
+    .cols = c(`2021`,`2022`,`2023`),
+    .fns = ~ str_to_lower(.) |>
+    str_remove_all("about|approx|≈|usd|per mmbtu|est\\.|\\$|\\s") |>
+      as.numeric()
+))
 
 ```
 
